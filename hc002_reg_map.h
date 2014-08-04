@@ -35,7 +35,7 @@
  ** Fan control
  **/
 
-#define HC_FAN_PIN PF_5
+#define HC_FAN_PIN PA_6
 
 /**
  ** Speed PIN

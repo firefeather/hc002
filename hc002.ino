@@ -10,6 +10,8 @@
 
 #include "hc002_reg_map.h"
 
+#include "wiring_analog.c"
+
 // Definitions
 
 #define SerialDbg Serial1
@@ -157,13 +159,13 @@ void rotateServo ()
 
 	SerialDbg.println ("Servo rotation started");
 
-	for (pos = 0; pos < 180; pos += 1) {
+	for (pos = 0; pos < 180; pos += 30) {
 		servo.write (pos);
-		delay (15);
+		delay (30);
 	}
-	for (pos = 180; pos >= 1; pos -= 1) {
+	for (pos = 180; pos >= 1; pos -= 30) {
 		servo.write (pos);
-		delay (15);
+		delay (30);
 	}
 
 	SerialDbg.println ("Servo rotation finished");
@@ -171,30 +173,37 @@ void rotateServo ()
 
 void readSensors ()
 {
+	SerialDbg.println ("Sensors read started");
+
 	digitalWrite (HC_TX_ACT_PIN, HIGH);
 
-	dht_flag = dht.get ();
-	int32_t h = dht.humidityX10 ();
-	int32_t t = dht.temperatureX10 ();
+	//TODO(DZhon): Debug purpose!
+	dht_flag = 0;//dht.get ();
+	int16_t h = dht.humidityX10 ();
+	int16_t t = dht.temperatureX10 ();
+
+	SerialDbg.println ("DHT stage finished");
 
 	if (!dht_flag) {
 		snprintf (txBuf, sizeof (txBuf), "Failed to read from DHT22");
 	} else {
 		snprintf (txBuf, sizeof (txBuf),
-				  "H:%d.%d, T:%d.%D, S:%d",
+				  "H:%d.%d, T:%d.%d, S:%d",
 				  h / 10, h % 10,
 				  t / 10, t % 10,
 				  speed);
 	}
 
-	SerialDbg.print (txBuf);
+	SerialDbg.println (txBuf);
 	SerialDbg.flush ();
-	radio.print (txBuf);
+	radio.println (txBuf);
 	radio.flush ();
 
 	dumpRadioStatus (radio.radioState ());
 
 	digitalWrite (HC_TX_ACT_PIN, LOW);
+
+	SerialDbg.println ("Sensors read finished");
 }
 
 void readSpeedControl ()
@@ -266,5 +275,5 @@ void dumpRadioStatus (uint8_t status)
 void changeSpeed (uint16_t new_speed)
 {
 	speed = new_speed;
-	//TODO(DZhon): Implement PWM logic here.
+	PWMWrite (HC_FAN_PIN, 255, (speed * 255) / 100, 25000);
 }
