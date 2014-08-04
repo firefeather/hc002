@@ -13,12 +13,13 @@
 // Definitions
 
 #define SerialDbg Serial1
+#define STR_SZ 33
 
 // Constants and global objects
 
-Enrf24 radio (HC_RF_CE, HC_RF_CSN, HC_RF_IRQ);
+Enrf24 radio (HC_RF_CE_PIN, HC_RF_CSN_PIN, HC_RF_IRQ_PIN);
 Servo servo;
-DHT22 dht (HC_DHT);
+DHT22 dht (HC_DHT_PIN);
 SimpleTimer stimer;
 
 boolean dht_flag;
@@ -28,76 +29,133 @@ const uint16_t sensorsPeriodSeconds = 3;
 
 const uint8_t txaddr[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0x01 };
 const uint8_t rxaddr[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0x02 };
+const uint16_t speedaddr = 0;
 
-char rxBuf[33];
+char rxBuf[STR_SZ];
+char txBuf[STR_SZ];
+
+uint8_t speed = 0;
+boolean speed_by_rx = 0;
 
 // Functions prototypes
 
-void dump_radio_status_to_serialport (uint8_t);
+void setupSerial ();
+void setupSPI ();
+void setupRadio ();
+void setupServo ();
+void setupDHT ();
+void setupTimer ();
+void setupFAN ();
+void setupSpeedControl ();
+
+void dumpRadioStatus (uint8_t);
 
 void readRFCommand ();
 void rotateServo ();
 void readSensors ();
 void readSpeedControl ();
+void changeSpeed (uint16_t);
 
 // Functions implementation
 
 void setup()
 {
-        // Init debugging UART capabilities.
+	setupSerial ();
+	setupSPI ();
+	setupRadio ();
+	setupServo ();
+	setupDHT ();
+	setupTimer ();
+	setupFAN ();
+	setupSpeedControl ();
+}
 
+void setupSerial ()
+{
 	SerialDbg.setPins (HC_SERIAL_PINS);
 	SerialDbg.begin (9600);
 
-        // Init SPI for nRF24l01+.
-        // Using PD port.
+	SerialDbg.println ("Serial setup completed");
+}
 
+void setupSPI ()
+{
 	SPI.setModule (3);
 	SPI.begin ();
 	SPI.setClockDivider (SPI_CLOCK_DIV8);
 	SPI.setDataMode (SPI_MODE0);
 	SPI.setBitOrder (MSBFIRST);
 
-        // Bring up radio module.
+	SerialDbg.println ("SPI setup completed");
+}
 
+void setupRadio ()
+{
 	radio.begin ();
-	dump_radio_status_to_serialport (radio.radioState ());
+	dumpRadioStatus (radio.radioState ());
+
 	radio.setTXaddress ( (void*) txaddr);
 	radio.setRXaddress ( (void*) rxaddr);
-	dump_radio_status_to_serialport (radio.radioState ());
+	dumpRadioStatus (radio.radioState ());
+
 	radio.enableRX ();
-	dump_radio_status_to_serialport (radio.radioState ());
+	dumpRadioStatus (radio.radioState ());
 
-        // Init servo.
+	pinMode (HC_RX_ACT_PIN, OUTPUT);
+	pinMode (HC_TX_ACT_PIN, OUTPUT);
+	pinMode (HC_RF_STATE_ERR_PIN, OUTPUT);
 
-	servo.attach (HC_SERVO);
+	SerialDbg.println ("Radio setup completed");
+}
+
+void setupServo ()
+{
+	servo.attach (HC_SERVO_PIN);
 	servo.write (90);
 
-        // Init DHT22
+	SerialDbg.println ("Servo setup completed");
+}
 
+void setupDHT ()
+{
 	dht.begin ();
 
-        // Prepare periodic tasks
+	SerialDbg.println ("DHT setup completed");
+}
 
-        stimer.setInterval (servoPeriodSeconds * 1000, rotateServo);
+void setupTimer ()
+{
+	stimer.setInterval (servoPeriodSeconds * 1000, rotateServo);
 	stimer.setInterval (sensorsPeriodSeconds * 1000, readSensors);
+
+	SerialDbg.println ("Timer setup completed");
+}
+
+void setupFAN ()
+{
+	changeSpeed (EEPROM.read (speedaddr));
+
+	SerialDbg.println ("FAN setup completed");
+}
+
+void setupSpeedControl ()
+{
+	pinMode (HC_SPEED_PIN, INPUT);
 }
 
 void loop()
 {
-        // Periodic tasks scheduler
 	stimer.run ();
 
-        // Immediate reaction for incoming requests
-        readRFCommand ();
-        readSpeedControl ();
+	readRFCommand ();
+	readSpeedControl ();
 }
 
 void rotateServo ()
 {
 	int pos;
 
-        SerialDbg.println ("Servo rotation started");
+	SerialDbg.println ("Servo rotation started");
 
 	for (pos = 0; pos < 180; pos += 1) {
 		servo.write (pos);
@@ -108,71 +166,78 @@ void rotateServo ()
 		delay (15);
 	}
 
-        SerialDbg.println ("Servo rotation finished");
+	SerialDbg.println ("Servo rotation finished");
 }
 
 void readSensors ()
 {
+	digitalWrite (HC_TX_ACT_PIN, HIGH);
+
 	dht_flag = dht.get ();
 	int32_t h = dht.humidityX10 ();
 	int32_t t = dht.temperatureX10 ();
 
 	if (!dht_flag) {
-		SerialDbg.println ("Failed to read from DHT22");
-                radio.println ("DHTFail");
+		snprintf (txBuf, sizeof (txBuf), "Failed to read from DHT22");
 	} else {
-		SerialDbg.print ("RH% \t");
-		SerialDbg.print (h / 10);
-		SerialDbg.print (".");
-		SerialDbg.print (h % 10);
-		SerialDbg.println (" %\t");
-
-		SerialDbg.print ("oC \t");
-		SerialDbg.print (t / 10);
-		SerialDbg.print (".");
-		SerialDbg.print (t % 10);
-		SerialDbg.println (" *C");
-
-                dump_radio_status_to_serialport (radio.radioState ());
-
-                radio.print ("H:");
-                radio.print (h/10);
-                radio.print (".");
-                radio.print (h%10);
-
-                radio.print (", T:");
-                radio.print (t/10);
-                radio.print (".");
-                radio.println (t % 10);
-
-                radio.flush ();
-
-                dump_radio_status_to_serialport (radio.radioState ());
+		snprintf (txBuf, sizeof (txBuf),
+				  "H:%d.%d, T:%d.%D, S:%d",
+				  h / 10, h % 10,
+				  t / 10, t % 10,
+				  speed);
 	}
+
+	SerialDbg.print (txBuf);
+	SerialDbg.flush ();
+	radio.print (txBuf);
+	radio.flush ();
+
+	dumpRadioStatus (radio.radioState ());
+
+	digitalWrite (HC_TX_ACT_PIN, LOW);
 }
 
 void readSpeedControl ()
 {
-    //TODO(DZhon): Implement me.
+	if (speed_by_rx) {
+		changeSpeed ( (100 * analogRead (HC_SPEED_PIN)) / 4095);
+	}
 }
 
 void readRFCommand ()
 {
-    if (radio.available (true)) {
-	if (radio.read (rxBuf)) {
-	    Serial.print ("Received packet: ");
-            Serial.println (rxBuf);
+	if (radio.available (true)) {
+		if (radio.read (rxBuf)) {
+			digitalWrite (HC_RX_ACT_PIN, HIGH);
 
-            //TODO(DZhon): Some parsing and reaction needed.
+			SerialDbg.print ("Received packet: ");
+			SerialDbg.println (rxBuf);
+
+			char command_type = rxBuf[0];
+			//char command_sep = rxBuf[1];
+			char command_val = rxBuf[2];
+			//char zero_byte = rxBuf[3];
+
+			switch (command_type) {
+				case 'S': changeSpeed (command_val); break;
+				case 'F': rotateServo (); break;
+				case 'R': readSensors (); break;
+
+				default: SerialDbg.println ("Unknown command");
+			}
+
+			digitalWrite (HC_RX_ACT_PIN, LOW);
+		}
 	}
-    }
 }
 
-void dump_radio_status_to_serialport (uint8_t status)
+void dumpRadioStatus (uint8_t status)
 {
 	SerialDbg.print ("Enrf24 radio transceiver status: ");
+
 	switch (status) {
 		case ENRF24_STATE_NOTPRESENT:
+			digitalWrite (HC_RF_STATE_ERR_PIN, HIGH);
 			SerialDbg.println ("NO TRANSCEIVER PRESENT");
 			break;
 
@@ -193,6 +258,13 @@ void dump_radio_status_to_serialport (uint8_t status)
 			break;
 
 		default:
+			digitalWrite (HC_RF_STATE_ERR_PIN, HIGH);
 			SerialDbg.println ("UNKNOWN STATUS CODE");
 	}
+}
+
+void changeSpeed (uint16_t new_speed)
+{
+	speed = new_speed;
+	//TODO(DZhon): Implement PWM logic here.
 }
