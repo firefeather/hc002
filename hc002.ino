@@ -58,6 +58,27 @@ void readSensors ();
 void readSpeedControl ();
 void changeSpeed (uint16_t);
 
+int setSpeedCmd ();
+int rotateServoCmd ();
+int sensorsCmd ();
+
+void setSpeedCmd_args (char*);
+
+// Commands dispatcher
+
+struct command_t {
+	const char * name;
+	int (*execute)(void);
+	void (*build_args)(char * command);
+};
+
+static command_t commands[] = {
+	{"speed", setSpeedCmd, setSpeedCmd_args },
+	{"servo", rotateServoCmd, 0 },
+	{"sensors", sensorsCmd, 0 },
+	{0,0,0} // NULL_BARRIER
+};
+
 // Functions implementation
 
 void setup()
@@ -219,21 +240,45 @@ void readRFCommand ()
 		if (radio.read (rxBuf)) {
 			digitalWrite (HC_RX_ACT_PIN, HIGH);
 
-			SerialDbg.print ("Received packet: ");
-			SerialDbg.println (rxBuf);
+			if (rxBuf[0] != '\0') { 
+				SerialDbg.print ("Received packet: ");
+				SerialDbg.println (rxBuf);
+				
+				int i = 0;
+				
+				for (i = 0; rxBuf[i] != '\0'; ++i) {
+					if (rxBuf[i] == ' ') {
+						rxBuf[i] = '\0';
+						break;
+					}
+				}	
 
-			char command_type = rxBuf[0];
-			//char command_sep = rxBuf[1];
-			char command_val = rxBuf[2];
-			//char zero_byte = rxBuf[3];
-
-			switch (command_type) {
-				case 'S': changeSpeed (command_val); break;
-				case 'F': rotateServo (); break;
-				case 'R': readSensors (); break;
-
-				default: SerialDbg.println ("Unknown command");
+				int arg_base = i + 1;
+				
+				for (i = 0 ;; ++i) {
+					if (commands[i].name == 0) { i = -1; break; }
+					if (strcmp (commands[i].name, rxBuf) == 0) { break; }
+				}
+				
+				if (i >= 0) {
+					if (commands[i].build_args) {
+						commands[i].build_args (&rxBuf[arg_base]);
+					}
+					
+					int status = commands[i].execute ();
+					if (status != 0) {
+						SerialDbg.print ("Error in command ");
+						SerialDbg.print (commands[i].name);
+						SerialDbg.print (" : ");
+						SerialDbg.println (status);
+					}
+				} else {
+					SerialDbg.println ("Unknown command received");
+				}
+			} else {
+				SerialDbg.println ("Null packet received");
 			}
+
 
 			digitalWrite (HC_RX_ACT_PIN, LOW);
 		}
@@ -275,5 +320,28 @@ void dumpRadioStatus (uint8_t status)
 void changeSpeed (uint16_t new_speed)
 {
 	speed = new_speed;
+	EEPROM.write (speedaddr, new_speed);
 	PWMWrite (HC_FAN_PIN, 255, (speed * 255) / 100, 25000);
+}
+
+int setSpeedCmd () 
+{
+	changeSpeed (speed);
+	return 0;
+}
+
+int rotateServoCmd ()
+{
+	rotateServo ();
+	return 0;
+}
+
+int sensorsCmd ()
+{
+	readSensors ();
+	return 0;
+}
+
+void setSpeedCmd_args (char* s) {
+	speed = atoi (s);
 }

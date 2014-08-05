@@ -4,6 +4,7 @@
 /**
  ** UART
  **/
+
 #define HC_SERIAL_PINS UART1_PORTB
 
 /**
@@ -40,6 +41,7 @@
 /**
  ** Speed PIN
  **/
+ 
 #define HC_SPEED_PIN PB_3
 
 #endif // HC002_REG_MAP_H__
