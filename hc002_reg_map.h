@@ -12,9 +12,9 @@
  ** nRF24l01+ RF transceiver
  **/
 
-// SPI: 
-// SCK = PB_4, 
-// MOSI = PB_7, 
+// SPI:
+// SCK = PB_4,
+// MOSI = PB_7,
 // MISO = PB_6
 #define HC_RF_CE_PIN        PE_1
 #define HC_RF_CSN_PIN       PE_2
@@ -46,7 +46,7 @@
 /**
  ** Speed PIN
  **/
- 
+
 #define HC_SPEED_PIN PD_0
 
 #endif // HC002_REG_MAP_H__

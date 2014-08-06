@@ -28,6 +28,7 @@ boolean dht_flag;
 
 const uint16_t servoPeriodSeconds = 3;
 const uint16_t sensorsPeriodSeconds = 3;
+const uint16_t speedGuardMax = 20;
 
 const uint8_t txaddr[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0x01 };
 const uint8_t rxaddr[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0x02 };
@@ -37,6 +38,8 @@ char rxBuf[STR_SZ];
 char txBuf[STR_SZ];
 
 uint8_t speed = 0;
+uint8_t speed_read_guard = 0;
+
 boolean speed_by_rx = 0;
 
 // Functions prototypes
@@ -67,16 +70,16 @@ void setSpeedCmd_args (char*);
 // Commands dispatcher
 
 struct command_t {
-	const char * name;
-	int (*execute)(void);
-	void (*build_args)(char * command);
+	const char* name;
+	int (*execute) (void);
+	void (*build_args) (char* command);
 };
 
 static command_t commands[] = {
 	{"speed", setSpeedCmd, setSpeedCmd_args },
 	{"servo", rotateServoCmd, 0 },
 	{"sensors", sensorsCmd, 0 },
-	{0,0,0} // NULL_BARRIER
+	{0, 0, 0} // NULL_BARRIER
 };
 
 // Functions implementation
@@ -198,12 +201,12 @@ void readSensors ()
 
 	digitalWrite (HC_TX_ACT_PIN, HIGH);
 
-	//TODO(DZhon): Debug purpose!
-	dht_flag = 0;//dht.get ();
+	dht_flag = 1;//dht.get ();
+	SerialDbg.println ("DHT stage finished");
+	SerialDbg.flush ();
+
 	int16_t h = dht.humidityX10 ();
 	int16_t t = dht.temperatureX10 ();
-
-	SerialDbg.println ("DHT stage finished");
 
 	if (!dht_flag) {
 		snprintf (txBuf, sizeof (txBuf), "Failed to read from DHT22");
@@ -229,8 +232,17 @@ void readSensors ()
 
 void readSpeedControl ()
 {
-	if (speed_by_rx) {
-		changeSpeed ( (100 * analogRead (HC_SPEED_PIN)) / 4095);
+	if (!speed_by_rx) {
+		const int new_speed = 100 * analogRead (HC_SPEED_PIN) / 4095;
+		if (new_speed != speed) {
+			++speed_read_guard;
+			if (speed_read_guard > speedGuardMax) {
+				changeSpeed (new_speed);
+				speed_read_guard = 0;
+			}
+		} else {
+			speed_read_guard = 0;
+		}
 	}
 }
 
@@ -240,31 +252,31 @@ void readRFCommand ()
 		if (radio.read (rxBuf)) {
 			digitalWrite (HC_RX_ACT_PIN, HIGH);
 
-			if (rxBuf[0] != '\0') { 
+			if (rxBuf[0] != '\0') {
 				SerialDbg.print ("Received packet: ");
 				SerialDbg.println (rxBuf);
-				
+
 				int i = 0;
-				
+
 				for (i = 0; rxBuf[i] != '\0'; ++i) {
 					if (rxBuf[i] == ' ') {
 						rxBuf[i] = '\0';
 						break;
 					}
-				}	
+				}
 
 				int arg_base = i + 1;
-				
+
 				for (i = 0 ;; ++i) {
 					if (commands[i].name == 0) { i = -1; break; }
 					if (strcmp (commands[i].name, rxBuf) == 0) { break; }
 				}
-				
+
 				if (i >= 0) {
 					if (commands[i].build_args) {
 						commands[i].build_args (&rxBuf[arg_base]);
 					}
-					
+
 					int status = commands[i].execute ();
 					if (status != 0) {
 						SerialDbg.print ("Error in command ");
@@ -319,12 +331,15 @@ void dumpRadioStatus (uint8_t status)
 
 void changeSpeed (uint16_t new_speed)
 {
+	SerialDbg.print ("Applying new speed: ");
+	SerialDbg.println (new_speed);
+
 	speed = new_speed;
 	EEPROM.write (speedaddr, new_speed);
-	PWMWrite (HC_FAN_PIN, 255, ((100 - speed) * 255) / 100, 25000);
+	PWMWrite (HC_FAN_PIN, 255, ( (100 - speed) * 255) / 100, 25000);
 }
 
-int setSpeedCmd () 
+int setSpeedCmd ()
 {
 	changeSpeed (speed);
 	return 0;
@@ -342,6 +357,7 @@ int sensorsCmd ()
 	return 0;
 }
 
-void setSpeedCmd_args (char* s) {
+void setSpeedCmd_args (char* s)
+{
 	speed = atoi (s);
 }
