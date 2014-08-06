@@ -6,15 +6,20 @@
  **/
 
 #define HC_SERIAL_PINS UART1_PORTB
+// Occupies PB_0 and PB_1
 
 /**
  ** nRF24l01+ RF transceiver
  **/
 
-// SPI: SCK = PB_4, MOSI = PB_7, MISO = PB_6
+// SPI: 
+// SCK = PB_4, 
+// MOSI = PB_7, 
+// MISO = PB_6
 #define HC_RF_CE_PIN        PE_1
 #define HC_RF_CSN_PIN       PE_2
 #define HC_RF_IRQ_PIN       PE_3
+
 
 #define HC_TX_ACT_PIN       PC_4
 #define HC_RX_ACT_PIN       PC_5
@@ -24,7 +29,7 @@
  ** DHT22 Humidity sensor
  **/
 
-#define HC_DHT_PIN PE_4
+#define HC_DHT_PIN PC_7
 
 /**
  ** Servo
@@ -36,12 +41,12 @@
  ** Fan control
  **/
 
-#define HC_FAN_PIN PA_6
+#define HC_FAN_PIN PD_6
 
 /**
  ** Speed PIN
  **/
  
-#define HC_SPEED_PIN PB_3
+#define HC_SPEED_PIN PD_0
 
 #endif // HC002_REG_MAP_H__
