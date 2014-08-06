@@ -321,7 +321,7 @@ void changeSpeed (uint16_t new_speed)
 {
 	speed = new_speed;
 	EEPROM.write (speedaddr, new_speed);
-	PWMWrite (HC_FAN_PIN, 255, (speed * 255) / 100, 25000);
+	PWMWrite (HC_FAN_PIN, 255, ((100 - speed) * 255) / 100, 25000);
 }
 
 int setSpeedCmd () 
