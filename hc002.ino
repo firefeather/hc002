@@ -201,7 +201,7 @@ void readSensors ()
 
 	digitalWrite (HC_TX_ACT_PIN, HIGH);
 
-	dht_flag = 1;//dht.get ();
+	dht_flag = dht.get ();
 	SerialDbg.println ("DHT stage finished");
 	SerialDbg.flush ();
 
